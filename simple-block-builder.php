@@ -4,6 +4,8 @@
  * Description: Build custom Gutenberg blocks directly in the WordPress dashboard using ACF Pro. Write HTML, PHP, CSS, and JS instantly.
  * Version: 1.0
  * Author: The Code Beast LLC
+ * License: GPLv2 or later
+ * License URI: http://www.gnu.org/licenses/gpl-2.0.html
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -137,8 +139,9 @@ class Simple_Block_Builder {
 			return;
 		}
 
-		$css = get_field( 'sbb_css', $post_id );
-		$js  = get_field( 'sbb_js', $post_id );
+		$css      = get_field( 'sbb_css', $post_id );
+		$js       = get_field( 'sbb_js', $post_id );
+		$template = get_field( 'sbb_template', $post_id );
 
 		$upload_dir = wp_upload_dir();
 		$base_dir   = $upload_dir['basedir'] . '/simple-block-builder';
@@ -164,6 +167,14 @@ class Simple_Block_Builder {
 			file_put_contents( $js_file, $js );
 		} elseif ( file_exists( $js_file ) ) {
 			unlink( $js_file );
+		}
+
+		// Handle PHP Template
+		$php_file = $base_dir . '/block-' . $post_id . '.php';
+		if ( $template ) {
+			file_put_contents( $php_file, $template );
+		} elseif ( file_exists( $php_file ) ) {
+			unlink( $php_file );
 		}
 	}
 
@@ -246,14 +257,21 @@ class Simple_Block_Builder {
 		}
 
 		echo '<div id="' . esc_attr( $block['id'] ) . '" class="' . esc_attr( $wrapper_class ) . '">';
-		if ( $template ) {
-			// Evaluate PHP code stored in the database
-			ob_start();
-			// We prepend closing PHP tag because eval expects PHP code, 
-			// but we want to allow HTML by default.
-			eval( '?>' . $template );
-			echo ob_get_clean();
+
+		$php_file = $base_path . '/block-' . $sbb_post_id . '.php';
+
+		// Generate PHP file if it doesn't exist (e.g. legacy blocks)
+		if ( ! file_exists( $php_file ) && $template ) {
+			if ( ! file_exists( $base_path ) ) {
+				wp_mkdir_p( $base_path );
+			}
+			file_put_contents( $php_file, $template );
 		}
+
+		if ( file_exists( $php_file ) ) {
+			include $php_file;
+		}
+
 		echo '</div>';
 
 		// 3. Enqueue JS
