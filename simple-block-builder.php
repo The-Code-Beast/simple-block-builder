@@ -25,6 +25,10 @@ class Simple_Block_Builder {
 		add_action( 'acf/save_post', [ $this, 'generate_block_assets' ], 20 );
 		// 5. Enhance Admin UI (Icon Picker)
 		add_action( 'acf/input/admin_head', [ $this, 'admin_head' ] );
+		add_action( 'init', [ $this, 'register_section_post_type' ] );
+		add_action( 'init', [ $this, 'register_shortcodes' ] );
+		add_filter( 'manage_sbb_section_posts_columns', [ $this, 'section_columns' ] );
+		add_action( 'manage_sbb_section_posts_custom_column', [ $this, 'section_columns_content' ], 10, 2 );
 	}
 
 	/**
@@ -49,14 +53,111 @@ class Simple_Block_Builder {
 		];
 
 		register_post_type( 'sbb_block', [
+			'labels'              => $labels,
 			'label'               => 'Custom Blocks',
-			'public'              => false, // Internal use only
+			'public'              => false,
 			'show_ui'             => true,
 			'show_in_menu'        => true,
-			'supports'            => [ 'title', 'revisions' ], // We use ACF for the rest
+			'supports'            => [ 'title', 'revisions' ],
 			'menu_icon'           => 'dashicons-layout',
 			'menu_position'       => 25,
 		] );
+	}
+
+	public function register_section_post_type() {
+		$labels = [
+			'name'               => 'Sections',
+			'singular_name'      => 'Section',
+			'menu_name'          => 'Sections',
+			'name_admin_bar'     => 'Section',
+			'add_new'            => 'Add Section',
+			'add_new_item'       => 'Add New Section',
+			'new_item'           => 'New Section',
+			'edit_item'          => 'Edit Section',
+			'view_item'          => 'View Section',
+			'all_items'          => 'All Sections',
+			'search_items'       => 'Search Sections',
+			'parent_item_colon'  => 'Parent Sections:',
+			'not_found'          => 'No sections found.',
+			'not_found_in_trash' => 'No sections found in Trash.',
+		];
+
+		register_post_type( 'sbb_section', [
+			'labels'             => $labels,
+			'label'              => 'Sections',
+			'public'             => false,
+			'show_ui'            => true,
+			'show_in_menu'       => 'edit.php?post_type=sbb_block',
+			'show_in_rest'       => true,
+			'exclude_from_search'=> true,
+			'publicly_queryable' => false,
+			'supports'           => [ 'title', 'editor', 'thumbnail', 'revisions' ],
+			'menu_icon'          => 'dashicons-screenoptions',
+			'menu_position'      => 26,
+		] );
+	}
+
+	public function register_shortcodes() {
+		add_shortcode( 'sbb_section', [ $this, 'render_section_shortcode' ] );
+	}
+
+	public function render_section_shortcode( $atts ) {
+		$atts = shortcode_atts(
+			[
+				'id'   => '',
+				'slug' => '',
+			],
+			$atts,
+			'sbb_section'
+		);
+
+		$post = null;
+
+		if ( ! empty( $atts['id'] ) ) {
+			$post = get_post( (int) $atts['id'] );
+		} elseif ( ! empty( $atts['slug'] ) ) {
+			$post = get_page_by_path( sanitize_title( $atts['slug'] ), OBJECT, 'sbb_section' );
+		}
+
+		if ( ! $post || 'sbb_section' !== $post->post_type || 'publish' !== $post->post_status ) {
+			return '';
+		}
+
+		$content = $post->post_content;
+
+		if ( function_exists( 'has_blocks' ) && function_exists( 'do_blocks' ) && has_blocks( $content ) ) {
+			$content = do_blocks( $content );
+		} else {
+			$content = apply_filters( 'the_content', $content );
+		}
+
+		return $content;
+	}
+
+	public function section_columns( $columns ) {
+		$new_columns = [];
+
+		foreach ( $columns as $key => $label ) {
+			if ( 'date' === $key ) {
+				$new_columns['sbb_shortcode'] = 'Shortcode';
+			}
+			$new_columns[ $key ] = $label;
+		}
+
+		return $new_columns;
+	}
+
+	public function section_columns_content( $column, $post_id ) {
+		if ( 'sbb_shortcode' !== $column ) {
+			return;
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post || 'sbb_section' !== $post->post_type ) {
+			return;
+		}
+
+		echo '<code>[sbb_section id="' . esc_attr( $post_id ) . '"]</code>';
 	}
 
 	/**
